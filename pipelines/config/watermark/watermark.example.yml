@@ -1,0 +1,21 @@
+# Example watermark file.
+#
+# Copy this to `watermark.yml` (gitignored) for local development.
+# `watermark_loader.py` reads/writes `watermark.yml` at runtime to track the
+# last successfully ingested point per source/table, so each incremental
+# ingestion run only pulls data newer than its watermark.
+#
+# Adjust the tables and starting values below to match what
+# ingest__tdb.py / ingest__vns.py actually pull.
+
+tdb: # simulated trading app
+  orders:
+    last_watermark: "1970-01-01T00:00:00Z"
+  executions:
+    last_watermark: "1970-01-01T00:00:00Z"
+  portfolio:
+    last_watermark: "1970-01-01T00:00:00Z"
+
+vns: # vnstock market data
+  stock_price:
+    last_watermark: "1970-01-01"
