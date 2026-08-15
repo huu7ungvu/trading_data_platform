@@ -44,7 +44,7 @@ Example: `orch__tdb__users`
    - pulls changed rows (CDC) from the trading app DB since that watermark
    - writes the batch to MinIO Landing as Parquet/ORC
    - advances the watermark once the write succeeds
-2. **Load** — calls `load__bronze(schema="config/schema/orders.json", destination="bronze.users", ...)`:
+2. **Load** — calls `load__bronze(schema="config/schema/users.json", destination="bronze.users", ...)`:
    - reads the newly landed objects from MinIO
    - loads them into the ClickHouse Bronze table per the schema config
 3. **Transform** — triggers `dbt run` (or `build`) so Silver/Gold models pick up the new Bronze rows as part of the same pipeline run, instead of waiting on a separate schedule.
