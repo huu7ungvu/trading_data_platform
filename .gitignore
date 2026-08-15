@@ -219,3 +219,6 @@ __marimo__/
 
 # credential files
 credential/
+
+# local pipeline watermark state (regenerated at runtime, see watermark.example.yml)
+pipelines/config/watermark/watermark.yml
