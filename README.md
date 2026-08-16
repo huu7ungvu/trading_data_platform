@@ -50,6 +50,7 @@ This repo simulates that environment end-to-end: a fake trading app generates re
 
 | Concern | Tool | Role |
 |---|---|---|
+| Source database | **PostgreSQL** | Backing store for the simulated trading app; CDC source for `ingest__tdb` |
 | Orchestration | **Prefect** | Schedules, runs, and monitors pipelines |
 | Object storage | **MinIO** | S3-compatible landing zone |
 | Transformation | **dbt** | SQL modeling, testing, versioning (Bronze → Silver → Gold) |
@@ -75,15 +76,18 @@ This design comfortably handles the current ~1TB of data and is expected to scal
 
 ```
 trading_data_platform/
-├── simulated_app/          # Trading app that generates orders/executions/portfolio events
-├── minio/                  # Landing layer service (MinIO)
-├── clickhouse/             # Bronze/Silver/Gold warehouse service (ClickHouse)
+├── docker-compose.yml      # Postgres, MinIO, ClickHouse + one-off init jobs (see Getting Started)
+├── .env.example            # Template for .env (gitignored) — copy before first run
+├── simulated_app/          # generate_script.sql — Postgres schema/seed for the simulated trading app
+├── minio/                  # generate_scipt.bash — creates Landing buckets
+├── clickhouse/             # generate_scipt.bash — creates Bronze/Silver/Gold schemas
 ├── pipelines/              # Prefect project
 │   ├── ingestion/          #   Pull raw data from sources → Landing
 │   ├── loading/            #   Load Landing data → Bronze
 │   ├── orchestration/      #   Prefect flow & deployment definitions
 │   ├── config/             #   Per-source schemas and watermarks
 │   ├── credential/         #   Local secrets (gitignored, not committed)
+│   ├── credential_example/ #   Template showing the shape of credential/
 │   └── utils/common/       #   Shared helpers (credentials, datetime, watermark loading)
 └── transformations/        # dbt project — Silver & Gold modeling
 ```
@@ -94,24 +98,32 @@ trading_data_platform/
 
 **Prerequisites**: Docker, Python 3.12+, [`uv`](https://github.com/astral-sh/uv) (or `pip`), a Prefect account/server.
 
-<!-- ```bash
-# 1. Clone and set up the Python environment
+```bash
+# 1. Clone and configure
 git clone https://github.com/huu7ungvu/trading_data_platform.git
 cd trading_data_platform
+cp .env.example .env   # adjust credentials/ports if you need to
+
+# 2. Bring up Postgres, MinIO, and ClickHouse
+docker compose up -d
+
+# 3. Seed / reset data — safe to run any time, as many times as you want
+docker compose run --rm pg-init      # simulated trading app schema + seed data
+docker compose run --rm minio-init   # Landing buckets
+docker compose run --rm ch-init      # Bronze/Silver/Gold schemas
+
+# 4. Set up the Python/Prefect environment
 uv venv && source .venv/bin/activate
 uv pip install prefect  # dependency manifest not committed yet — see Project Status
 
-# 2. Bring up local infrastructure (MinIO, ClickHouse, simulated app)
-docker compose -f minio/docker.yml up -d
-docker compose -f clickhouse/docker.yml up -d
-docker compose -f simulated_app/docker.yml up -d
-
-# 3. Run a pipeline
+# 5. Run a pipeline
 cd pipelines
 python test/01_getting_started.py   # sample Prefect flow to confirm the setup works
-``` -->
+```
 
-Configuration lives in `pipelines/config/` (source schemas, watermarks) and `pipelines/credential/` (never committed — see `.gitignore`).
+> The three `*-init` jobs above are one-off containers, not part of `docker compose up` — they only run when explicitly invoked, so re-seeding never requires wiping a volume. Their scripts (`simulated_app/generate_script.sql`, `minio/generate_scipt.bash`, `clickhouse/generate_scipt.bash`) are currently empty stubs, so today they run and do nothing — implementation is in progress (see [Project Status](#project-status)).
+
+Configuration lives in `.env` (infra credentials/ports — copy from `.env.example`), `pipelines/config/` (source schemas, watermarks), and `pipelines/credential/` (API tokens — copy from `pipelines/credential_example/`). None of these are committed — see `.gitignore`.
 
 ## Project Status
 
@@ -119,6 +131,7 @@ Built incrementally, layer by layer:
 
 - [x] Repo scaffolding & environment setup
 - [x] Prefect orchestration project bootstrapped (sample flow deploys locally)
+- [x] Local infra composed — Postgres, MinIO, ClickHouse + one-off init jobs (`docker-compose.yml`)
 - [ ] Simulated trading app generating order/execution/portfolio events
 - [ ] Landing layer — ingestion into MinIO
 - [ ] Bronze layer — load into ClickHouse

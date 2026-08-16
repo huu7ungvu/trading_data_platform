@@ -1,0 +1,135 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trading_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trading}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trading}
+      POSTGRES_DB: ${POSTGRES_DB:-simulated_app}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trading} -d ${POSTGRES_DB:-simulated_app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trading_net
+
+  minio:
+    image: minio/minio:latest
+    container_name: trading_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trading_net
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: trading_clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-bronze}
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT:-9004}:9000" # remapped host-side; 9000 is already taken by minio
+    volumes:
+      - ch_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - trading_net
+
+  # ── One-off init jobs ──────────────────────────────────────────────
+  # `profiles: ["init"]` keeps these OUT of a plain `docker compose up` —
+  # they only run when explicitly asked for, so seeding/reset is a
+  # deliberate action instead of Postgres/ClickHouse's built-in
+  # docker-entrypoint-initdb.d behavior (which only fires once, on an
+  # empty volume). Run (and re-run) on demand with:
+  #   docker compose run --rm pg-init
+  #   docker compose run --rm minio-init
+  #   docker compose run --rm ch-init
+
+  pg-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-trading}
+    entrypoint:
+      - psql
+      - -h
+      - postgres
+      - -U
+      - ${POSTGRES_USER:-trading}
+      - -d
+      - ${POSTGRES_DB:-simulated_app}
+      - -f
+      - /scripts/generate_script.sql
+    volumes:
+      - ./simulated_app/generate_script.sql:/scripts/generate_script.sql:ro
+    networks:
+      - trading_net
+    profiles: ["init"]
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    entrypoint: ["/bin/sh", "/scripts/generate_scipt.bash"]
+    volumes:
+      - ./minio/generate_scipt.bash:/scripts/generate_scipt.bash:ro
+    networks:
+      - trading_net
+    profiles: ["init"]
+
+  ch-init:
+    image: clickhouse/clickhouse-server:latest
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+    entrypoint: ["/bin/bash", "/scripts/generate_scipt.bash"]
+    volumes:
+      - ./clickhouse/generate_scipt.bash:/scripts/generate_scipt.bash:ro
+    networks:
+      - trading_net
+    profiles: ["init"]
+
+networks:
+  trading_net:
+    name: trading_net
+
+volumes:
+  pg_data:
+  minio_data:
+  ch_data:
