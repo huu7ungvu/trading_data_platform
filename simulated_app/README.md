@@ -1,7 +1,7 @@
 # simulated_app
 
 Postgres backing store for the simulated trading app, plus its CDC-via-WAL
-setup (no Debezium/Kafka -- see [docs.md](docs.md) for how it works).
+setup (no Debezium/Kafka).
 
 ## Contents
 
@@ -51,5 +51,5 @@ docker compose exec postgres psql -U trading -d simulated_app -c \
 ## Consuming the CDC stream
 
 See [`pipelines/ingestion/ingest__tdb.py`](../pipelines/ingestion/ingest__tdb.py) -- `peek_cdc_batch()` /
-`export_batch_to_minio()` / `advance_cdc_slot()`. Read [docs.md](docs.md) first if you're touching that file;
-the peek-then-advance ordering is the part most likely to bite you if changed carelessly.
+`export_batch_to_minio()` / `advance_cdc_slot()`. The peek-then-advance ordering is the part most likely to
+bite you if changed carelessly.
