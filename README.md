@@ -78,7 +78,7 @@ This design comfortably handles the current ~1TB of data and is expected to scal
 trading_data_platform/
 ├── docker-compose.yml      # Postgres, MinIO, ClickHouse + one-off init jobs (see Getting Started)
 ├── .env.example            # Template for .env (gitignored) — copy before first run
-├── simulated_app/          # generate_script.sql — Postgres schema/seed for the simulated trading app
+├── simulated_app/          # Postgres schema/seed + CDC-via-WAL setup (Dockerfile, generate_script.sql — see simulated_app/README.md)
 ├── minio/                  # generate_scipt.bash — creates Landing buckets
 ├── clickhouse/             # generate_scipt.bash — creates Bronze/Silver/Gold schemas
 ├── pipelines/              # Prefect project
@@ -105,10 +105,13 @@ cd trading_data_platform
 cp .env.example .env   # adjust credentials/ports if you need to
 
 # 2. Bring up Postgres, MinIO, and ClickHouse
+# (postgres builds from simulated_app/Dockerfile the first time — a plain
+# postgres:16-alpine plus wal2json compiled in for CDC-via-WAL, see
+# simulated_app/README.md; add --build to force a rebuild after changing it)
 docker compose up -d
 
 # 3. Seed / reset data — safe to run any time, as many times as you want
-docker compose run --rm pg-init      # simulated trading app schema + seed data
+docker compose run --rm pg-init      # simulated trading app schema + seed data + CDC publication/slot
 docker compose run --rm minio-init   # Landing buckets
 docker compose run --rm ch-init      # Bronze/Silver/Gold schemas
 
@@ -121,7 +124,7 @@ cd pipelines
 python test/01_getting_started.py   # sample Prefect flow to confirm the setup works
 ```
 
-> The three `*-init` jobs above are one-off containers, not part of `docker compose up` — they only run when explicitly invoked, so re-seeding never requires wiping a volume. Their scripts (`simulated_app/generate_script.sql`, `minio/generate_scipt.bash`, `clickhouse/generate_scipt.bash`) are currently empty stubs, so today they run and do nothing — implementation is in progress (see [Project Status](#project-status)).
+> The three `*-init` jobs above are one-off containers, not part of `docker compose up` — they only run when explicitly invoked, so re-seeding never requires wiping a volume. `simulated_app/generate_script.sql` is implemented (schema, seed data, CDC publication/slot — see [simulated_app/README.md](simulated_app/README.md)); `minio/generate_scipt.bash` and `clickhouse/generate_scipt.bash` are still empty stubs, so those two currently run and do nothing — implementation is in progress (see [Project Status](#project-status)).
 
 Configuration lives in `.env` (infra credentials/ports — copy from `.env.example`), `pipelines/config/` (source schemas, watermarks), and `pipelines/credential/` (API tokens — copy from `pipelines/credential_example/`). None of these are committed — see `.gitignore`.
 
