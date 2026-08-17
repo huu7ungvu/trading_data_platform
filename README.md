@@ -78,6 +78,7 @@ This design comfortably handles the current ~1TB of data and is expected to scal
 trading_data_platform/
 ├── docker-compose.yml      # Postgres, MinIO, ClickHouse + one-off init jobs (see Getting Started)
 ├── .env.example            # Template for .env (gitignored) — copy before first run
+├── requirements.txt        # Pinned Python deps for the .venv (pip freeze output)
 ├── simulated_app/          # Postgres schema/seed + CDC-via-WAL setup (Dockerfile, generate_script.sql — see simulated_app/README.md)
 ├── minio/                  # generate_scipt.bash — creates Landing buckets
 ├── clickhouse/             # generate_scipt.bash — creates Bronze/Silver/Gold schemas
@@ -117,7 +118,7 @@ docker compose run --rm ch-init      # Bronze/Silver/Gold schemas
 
 # 4. Set up the Python/Prefect environment
 uv venv && source .venv/bin/activate
-uv pip install prefect  # dependency manifest not committed yet — see Project Status
+uv pip install -r requirements.txt
 
 # 5. Run a pipeline
 cd pipelines
