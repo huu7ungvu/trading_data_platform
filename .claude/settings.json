@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose:*)",
+      "Bash(uv:*)",
+      "Bash(prefect:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(pipelines/credential/**)",
+      "Read(pipelines/config/watermark/watermark.yml)"
+    ]
+  }
+}
