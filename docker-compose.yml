@@ -1,8 +1,25 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: ./simulated_app
+      dockerfile: Dockerfile
+    image: trading_postgres:16-alpine-wal2json
     container_name: trading_postgres
     restart: unless-stopped
+    # Logical replication (CDC via WAL, see simulated_app/Dockerfile + the
+    # CREATE PUBLICATION / pg_create_logical_replication_slot block at the
+    # bottom of generate_script.sql):
+    #   wal_level=logical           - write enough WAL detail to decode row changes
+    #   max_replication_slots/senders - headroom for the CDC slot
+    #   output_plugin_libraries     - PG's own allow-list for logical-decoding
+    #                                 plugins (added as a security hardening in
+    #                                 a recent 16.x); wal2json must be listed
+    #                                 here or slot creation/use is refused.
+    command: >
+      -c wal_level=logical
+      -c max_replication_slots=4
+      -c max_wal_senders=4
+      -c output_plugin_libraries=wal2json
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-trading}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trading}
