@@ -18,8 +18,9 @@ scripts have any logic in them unless you just wrote it. Check `## Project Statu
 
 ## Commands
 
-No dependency manifest, linter, or test suite is committed yet (see status above) — don't invent
-`pytest`/`ruff`/`make` commands. What actually exists:
+No linter or test suite is committed yet (see status above) — don't invent `pytest`/`ruff`/`make`
+commands. A pinned dependency manifest (`requirements.txt`, `pip freeze` output) is committed.
+What actually exists:
 
 ```bash
 # Local infra: Postgres (simulated app DB), MinIO (Landing), ClickHouse (Bronze/Silver/Gold)
@@ -31,9 +32,9 @@ docker compose run --rm pg-init      # simulated_app/generate_script.sql   -> Po
 docker compose run --rm minio-init   # minio/generate_scipt.bash           -> Landing buckets
 docker compose run --rm ch-init      # clickhouse/generate_scipt.bash      -> Bronze/Silver/Gold schemas
 
-# Python/Prefect env (uv; only `prefect` is installed so far, ad hoc)
+# Python/Prefect env (uv)
 uv venv && source .venv/bin/activate
-uv pip install prefect
+uv pip install -r requirements.txt
 
 # Run/deploy the sample flow
 cd pipelines && python test/01_getting_started.py
