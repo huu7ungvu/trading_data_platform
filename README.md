@@ -120,9 +120,13 @@ docker compose run --rm ch-init      # Bronze/Silver/Gold schemas
 uv venv && source .venv/bin/activate
 uv pip install -r requirements.txt
 
-# 5. Run a pipeline
+# 5. Setup and start Prefect server
+chmox +x run_prefect_server.sh
+./run_prefect_server.sh     # Create a work pool in local and start Prefect server
+
+# 6. Run a pipeline
 cd pipelines
-python test/01_getting_started.py   # sample Prefect flow to confirm the setup works
+python test/01_getting_started.py   # sample Prefect flow and deploy to confirm the setup works
 ```
 
 > The three `*-init` jobs above are one-off containers, not part of `docker compose up` — they only run when explicitly invoked, so re-seeding never requires wiping a volume. `simulated_app/generate_script.sql` is implemented (schema, seed data, CDC publication/slot — see [simulated_app/README.md](simulated_app/README.md)); `minio/generate_scipt.bash` and `clickhouse/generate_scipt.bash` are still empty stubs, so those two currently run and do nothing — implementation is in progress (see [Project Status](#project-status)).
