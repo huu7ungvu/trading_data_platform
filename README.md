@@ -23,6 +23,7 @@ This is a personal side project. The goal is to practice building a production-s
 This repo simulates that environment end-to-end: a fake trading app generates realistic order/execution/portfolio events, real Vietnamese market data comes in from a public API, and everything flows through a governed, layered data platform.
 
 ## Architecture
+![alt text](image.png)
 
 **Layer responsibilities**
 
