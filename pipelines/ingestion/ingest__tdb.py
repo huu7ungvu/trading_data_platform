@@ -47,7 +47,7 @@ class CDCChange:
 
 def _pg_connect(
     host: str = os.environ.get("POSTGRES_HOST", "localhost"),
-    port: int = int(os.environ.get("POSTGRES_PORT", 5432)),
+    port: int = int(os.environ.get("POSTGRES_PORT", 5433)),
     dbname: str = os.environ.get("POSTGRES_DB", "simulated_app"),
     user: str = os.environ.get("POSTGRES_USER", "trading"),
     password: str = os.environ.get("POSTGRES_PASSWORD", "trading"),
@@ -114,14 +114,18 @@ def export_batch_to_minio(changes: list[CDCChange], bucket: str, prefix: str) ->
     object_key = f"{prefix}/{ts_slug}_{lsn_slug}.parquet"
 
     client = Minio(
-        os.environ.get("MINIO_ENDPOINT", "localhost:9000"),
+        os.environ.get("MINIO_ENDPOINT", "localhost:9005"),
         access_key=os.environ.get("MINIO_ROOT_USER", "minioadmin"),
         secret_key=os.environ.get("MINIO_ROOT_PASSWORD", "minioadmin"),
         secure=False,
     )
-    with NamedTemporaryFile(suffix=".parquet") as tmp:
+    tmp = NamedTemporaryFile(suffix=".parquet", delete=False)
+    tmp.close()  # Bắt buộc đóng trên Windows trước khi pyarrow có thể ghi vào
+    try:
         pq.write_table(table, tmp.name)
         client.fput_object(bucket, object_key, tmp.name)
+    finally:
+        os.unlink(tmp.name)
 
     return object_key
 
