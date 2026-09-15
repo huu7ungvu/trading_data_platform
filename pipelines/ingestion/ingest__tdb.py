@@ -153,6 +153,6 @@ def run_cdc_export(slot_name: str, bucket: str, prefix: str, max_changes: int = 
     return object_key
 
 
-if __name__ == "__main__":
-    result = run_cdc_export(slot_name="cdc_users_slot", bucket="landing", prefix="tdb/users")
-    print(f"Exported: {result}" if result else "Nothing to export.")
+# if __name__ == "__main__":
+#     result = run_cdc_export(slot_name="cdc_users_slot", bucket="landing", prefix="tdb/users")
+#     print(f"Exported: {result}" if result else "Nothing to export.")
