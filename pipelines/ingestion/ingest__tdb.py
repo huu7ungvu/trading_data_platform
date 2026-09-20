@@ -23,15 +23,20 @@ New dependencies this module needs (not yet in pyproject/.venv as of writing):
 """
 from __future__ import annotations
 
+from io import BytesIO
 import json
 import os
 from dataclasses import dataclass, field
 from tempfile import NamedTemporaryFile
+from turtle import pd
 
 import psycopg2
 import pyarrow as pa
 import pyarrow.parquet as pq
+from ruamel.yaml import BytesIO
 from minio import Minio
+from psycopg2 import sql
+import pandas as pd
 
 
 @dataclass
@@ -53,6 +58,13 @@ def _pg_connect(
     password: str = os.environ.get("POSTGRES_PASSWORD", "trading"),
 ):
     return psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=password)
+
+def _minio_connect(
+    endpoint: str = os.environ.get("MINIO_ENDPOINT", "localhost:9000"),
+    access_key: str = os.environ.get("MINIO_ROOT_USER", "minioadmin"),
+    secret_key: str = os.environ.get("MINIO_ROOT_PASSWORD", "minioadmin"),
+):
+    return Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=False)
 
 
 def peek_cdc_batch(slot_name: str, max_changes: int = 5000) -> list[CDCChange]:
@@ -113,12 +125,7 @@ def export_batch_to_minio(changes: list[CDCChange], bucket: str, prefix: str) ->
     lsn_slug = last.lsn.replace("/", "-")
     object_key = f"{prefix}/{ts_slug}_{lsn_slug}.parquet"
 
-    client = Minio(
-        os.environ.get("MINIO_ENDPOINT", "localhost:9005"),
-        access_key=os.environ.get("MINIO_ROOT_USER", "minioadmin"),
-        secret_key=os.environ.get("MINIO_ROOT_PASSWORD", "minioadmin"),
-        secure=False,
-    )
+    client = _minio_connect()
     tmp = NamedTemporaryFile(suffix=".parquet", delete=False)
     tmp.close()  # Bắt buộc đóng trên Windows trước khi pyarrow có thể ghi vào
     try:
@@ -152,7 +159,74 @@ def run_cdc_export(slot_name: str, bucket: str, prefix: str, max_changes: int = 
     advance_cdc_slot(slot_name, changes[-1].lsn)
     return object_key
 
+def create_bucket(client, bucket):
+    if not client.bucket_exists(bucket):
+        client.make_bucket(bucket)
+        print(f"Bucket '{bucket}' created.")
+    else:
+        print(f"Bucket '{bucket}' already exists.")
 
-# if __name__ == "__main__":
-#     result = run_cdc_export(slot_name="cdc_users_slot", bucket="landing", prefix="tdb/users")
-#     print(f"Exported: {result}" if result else "Nothing to export.")
+def get_min_max_ids(conn, schema_name, table_name):
+    cursor = conn.cursor()
+    query = sql.SQL("SELECT MIN(id), MAX(id) FROM {}.{};").format(
+        sql.Identifier(schema_name),
+        sql.Identifier(table_name)
+    )
+    cursor.execute(query)
+    min_id, max_id = cursor.fetchone()
+    cursor.close()
+    return min_id, max_id
+
+def read_data_from_postgres(conn, current_id, next_id, column_names, schema_name, table_name):
+    cursor = conn.cursor()
+    query = sql.SQL("SELECT * FROM {}.{} where id >= %s AND id <= %s;").format(
+        sql.Identifier(schema_name),
+        sql.Identifier(table_name)
+    )
+    cursor.execute(query, (current_id, next_id))
+    data = cursor.fetchall()
+    if len(column_names) == 0:
+        column_names.extend([desc[0] for desc in cursor.description])
+    cursor.close()
+    return data
+
+def convert(data, column_names):
+    buffer = BytesIO()
+    # Convert the data to a pandas DataFrame
+    df = pd.DataFrame(data, columns=column_names)
+    df.to_parquet(buffer, index=False)
+    buffer.seek(0)
+    print(df)
+    return buffer
+
+def put_data_to_minio(client, buffer, file_name, bucket):
+    client.put_object(
+        bucket,
+        file_name,
+        buffer,
+        length=buffer.getbuffer().nbytes,
+        content_type="application/octet-stream"
+    )
+    print("Data uploaded to MinIO successfully.")
+    
+def back_fill_data(bucket: str, prefix: str, schema_name: str, table_name: str,max_changes: int = 1000) -> None:
+    """Backfill all pending changes in the slot until there are no more.
+    This is useful for catching up after a long downtime or for initial
+    backfill after creating a new slot.
+    """
+    client = _minio_connect()
+    conn = _pg_connect()
+    create_bucket(client, bucket)
+    part_number = 1
+    column_names = []
+    current_id, max_id = get_min_max_ids(conn, schema_name, table_name)
+    while current_id <= max_id:
+        next_id = current_id + max_changes
+        data = read_data_from_postgres(conn, current_id, next_id, column_names, schema_name, table_name)
+        if data:
+            buffer = convert(data, column_names)
+            file_name = f"{prefix}/{table_name}_backfill_part_{part_number}.parquet"
+            put_data_to_minio(client, buffer, file_name, bucket)
+            part_number += 1
+        current_id = next_id + 1
+    conn.close()
